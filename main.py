@@ -25,6 +25,25 @@ GITLAB_TOKEN = os.getenv("GITLAB_TOKEN")
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
+# GitHub/GitLab comment body max length (GitHub issue/review comments hard-limit at 65536 chars)
+MAX_COMMENT_BODY_LENGTH = 65536
+
+
+def _truncate_comment_body(body: str) -> str:
+    if len(body) <= MAX_COMMENT_BODY_LENGTH:
+        return body
+    suffix = "\n\n...(truncated: review output exceeded max comment length)"
+    return body[: MAX_COMMENT_BODY_LENGTH - len(suffix)] + suffix
+
+
+def _ensure_success(resp: httpx.Response, context: str):
+    """Raise with response status/body if the request failed (httpx does not raise by itself)"""
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"{context} failed: HTTP {resp.status_code} {resp.request.method} {resp.request.url} -> {resp.text[:1000]}"
+        )
+
+
 def verify_github_signature(payload_body: bytes, signature_header: str):
     """Verify GitHub webhook request signatures"""
     if not WEBHOOK_SECRET:
@@ -81,6 +100,7 @@ async def process_github_pr(repo_full_name: str, pr_number: int):
             # Get PR Diff
             diff_url = f"{GITHUB_URL}/repos/{repo_full_name}/pulls/{pr_number}"
             diff_resp = await client.get(diff_url, headers=headers)
+            _ensure_success(diff_resp, "GET PR diff")
             diff_text = diff_resp.text
 
             if not diff_text.strip():
@@ -89,14 +109,20 @@ async def process_github_pr(repo_full_name: str, pr_number: int):
             # Execute LLM review
             review_result = await get_ollama_review(diff_text)
 
-            # Post a comment to PR with JSON
+            # Post as a PR Review (not an issue comment), so it shows up as an
+            # actual code review on the PR instead of a plain conversation comment.
             comment_headers = {
                 "Authorization": f"Bearer {GITHUB_TOKEN}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            comment_url = f"{GITHUB_URL}/repos/{repo_full_name}/issues/{pr_number}/comments"
-            comment_body = f"🤖 **AI Code Reviewer (GitHub)**\n\n{review_result}"
-            await client.post(comment_url, headers=comment_headers, json={"body": comment_body})
+            review_url = f"{GITHUB_URL}/repos/{repo_full_name}/pulls/{pr_number}/reviews"
+            comment_body = _truncate_comment_body(f"🤖 **AI Code Reviewer (GitHub)**\n\n{review_result}")
+            review_resp = await client.post(
+                review_url,
+                headers=comment_headers,
+                json={"body": comment_body, "event": "COMMENT"},
+            )
+            _ensure_success(review_resp, "POST PR review")
 
     except Exception as e:
         print(f"GitHub Review Error: {e}")
@@ -113,6 +139,7 @@ async def process_gitlab_mr(project_id: int, mr_iid: int):
             # Get changes in MR
             diff_url = f"{GITLAB_URL}/api/v4/projects/{project_id}/merge_requests/{mr_iid}/changes"
             diff_resp = await client.get(diff_url, headers=headers)
+            _ensure_success(diff_resp, "GET MR changes")
             changes = diff_resp.json().get("changes", [])
 
             diff_text = ""
@@ -128,8 +155,9 @@ async def process_gitlab_mr(project_id: int, mr_iid: int):
 
             # Post a comment to MR
             note_url = f"{GITLAB_URL}/api/v4/projects/{project_id}/merge_requests/{mr_iid}/notes"
-            comment_body = f"🤖 **AI Code Reviewer (GitLab)**\n\n{review_result}"
-            await client.post(note_url, headers=headers, json={"body": comment_body})
+            comment_body = _truncate_comment_body(f"🤖 **AI Code Reviewer (GitLab)**\n\n{review_result}")
+            note_resp = await client.post(note_url, headers=headers, json={"body": comment_body})
+            _ensure_success(note_resp, "POST MR note")
 
     except Exception as e:
         print(f"GitLab Review Error: {e}")
