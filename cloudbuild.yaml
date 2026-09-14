@@ -12,6 +12,7 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
+      - "--build-arg=OLLAMA_MODEL=$_OLLAMA_MODEL"
       - "-t"
       - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:$BUILD_ID"
       - "-t"
@@ -56,6 +57,7 @@ substitutions:
   _GCS_BUCKET_NAME: "llm-review-prompt"
   _GCS_RULE_FILE_PATH: "code_review_rule.txt"
   _PLATFORM: "github" # 'github' or 'gitlab'
+  _OLLAMA_MODEL: "qwen2.5-coder:14b-instruct-q4_K_M" # Dockerfile ARG OLLAMA_MODEL と合わせる
 
 images:
   - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:$BUILD_ID"

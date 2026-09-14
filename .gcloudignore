@@ -1,4 +1,6 @@
+.devcontainer/
 .venv/
 .gitignore
 README.md
 *.sample
+requirements.txt

@@ -16,9 +16,12 @@ COPY main.py .
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
+ARG OLLAMA_MODEL=qwen2.5-coder:14b-instruct-q4_K_M
+ENV OLLAMA_MODEL=${OLLAMA_MODEL}
+
 RUN ollama serve & \
     sleep 5 && \
-    ollama pull qwen2.5-coder:14b-instruct-q4_K_M
+    ollama pull ${OLLAMA_MODEL}
 
 EXPOSE 8080
 

@@ -13,6 +13,7 @@ PLATFORM = os.getenv("PLATFORM", "github").lower()
 # Common settings
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 GCS_RULE_FILE_PATH = os.getenv("GCS_RULE_FILE_PATH")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct-q4_K_M")
 
 # GitHub Settings
 GITHUB_URL = os.getenv("GITHUB_URL", "https://api.github.com")
@@ -55,7 +56,7 @@ async def get_ollama_review(diff_text: str) -> str:
         ollama_resp = await client.post(
             "http://localhost:11434/api/chat",
             json={
-                "model": "qwen2.5-coder:14b",
+                "model": OLLAMA_MODEL,
                 "messages": [
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": f"以下のコード変更差分をレビューしてください:\n\n{diff_text}"}
