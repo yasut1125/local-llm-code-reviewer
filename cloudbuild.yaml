@@ -1,0 +1,65 @@
+steps:
+  # Generate requirements.txt
+  - name: "ghcr.io/astral-sh/uv:latest"
+    entrypoint: "/uv"
+    args:
+      - "export"
+      - "--frozen"
+      - "--no-dev"
+      - "--output-file=requirements.txt"
+
+  # Build Docker Image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-t"
+      - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:$BUILD_ID"
+      - "-t"
+      - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:latest"
+      - "."
+
+  # Push Image to Artifact Registry
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "--all-tags"
+      - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME"
+
+  # 4. Cloud Run (GPU: NVIDIA L4) へのデプロイ
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "$_SERVICE_NAME"
+      - "--image=$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:$BUILD_ID"
+      - "--region=$_LOCATION"
+      - "--platform=managed"
+      - "--gpu=1"
+      - "--gpu-type=nvidia-l4"
+      - "--no-cpu-throttling"
+      - "--cpu=4"
+      - "--memory=16Gi"
+      - "--concurrency=1"
+      - "--min-instances=0"
+      - "--timeout=300s"
+      - "--set-env-vars=GCS_BUCKET_NAME=$_GCS_BUCKET_NAME,GCS_RULE_FILE_PATH=$_GCS_RULE_FILE_PATH,PLATFORM=$_PLATFORM"
+      - "--set-secrets=GITHUB_TOKEN=code-reviewer-github-token:latest,WEBHOOK_SECRET=code-reviewer-github-webhook-secret:latest"
+      # Add below to '--set-secrets' if you use GitLab
+      #,GITLAB_TOKEN=code-reviewer-gitlab-token:latest
+
+substitutions:
+  _LOCATION: "us-central1"
+  _REPOSITORY: "gitlab-reviewer-repo" # Artifact Registry
+  _APP_NAME: "gitlab-llm-reviewer" # Image name
+  _SERVICE_NAME: "gitlab-llm-reviewer" # Cloud Run Service name
+  _GCS_BUCKET_NAME: "llm-review-prompt"
+  _GCS_RULE_FILE_PATH: "code_review_rule.txt"
+  _PLATFORM: "github" # 'github' or 'gitlab'
+
+images:
+  - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:$BUILD_ID"
+  - "$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$_APP_NAME:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
