@@ -43,7 +43,7 @@ steps:
       - "--memory=16Gi"
       - "--concurrency=1"
       - "--min-instances=0"
-      - "--timeout=300s"
+      - "--timeout=1800s"
       - "--set-env-vars=GCS_BUCKET_NAME=$_GCS_BUCKET_NAME,GCS_RULE_FILE_PATH=$_GCS_RULE_FILE_PATH,PLATFORM=$_PLATFORM"
       - "--set-secrets=GITHUB_TOKEN=code-reviewer-github-token:latest,WEBHOOK_SECRET=code-reviewer-github-webhook-secret:latest"
       # Add below to '--set-secrets' if you use GitLab
