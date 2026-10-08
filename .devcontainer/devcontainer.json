@@ -1,0 +1,51 @@
+{
+  "name": "llm-code-review",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+
+  // Live-mount the repo over the image's /app so edits are picked up
+  // without rebuilding the image.
+  "workspaceFolder": "/app",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+
+  // Reuse the host's gcloud ADC login inside the container instead of
+  // baking any credentials into the image.
+  // Run on the host first: gcloud auth application-default login --project=<PROJECT_ID>
+  "mounts": [
+    "source=${localEnv:HOME}/.config/gcloud,target=/root/.config/gcloud,type=bind,consistency=cached"
+  ],
+
+  "containerEnv": {
+    "PLATFORM": "github",
+    "GCS_BUCKET_NAME": "llm-review-prompt",
+    "GCS_RULE_FILE_PATH": "code_review_rule.txt",
+    "OLLAMA_MODEL": "qwen2.5-coder:1.5b",
+    "GOOGLE_APPLICATION_CREDENTIALS": "/root/.config/gcloud/application_default_credentials.json"
+    // Set GITHUB_TOKEN / WEBHOOK_SECRET here (or via .env, see below) if you
+    // need to post real PR comments or verify webhook signatures locally.
+  },
+
+  "forwardPorts": [8080, 11434],
+  "portsAttributes": {
+    "8080": { "label": "FastAPI webhook" },
+    "11434": { "label": "Ollama API" }
+  },
+
+  // Don't run the image's ENTRYPOINT (which blocks waiting on Ollama then
+  // execs uvicorn without --reload); keep the container idle so VS Code can
+  // attach a shell and you can start services manually while developing.
+  "overrideCommand": true,
+
+  // The dev image no longer bakes in app deps or pulls the model at build
+  // time (that only happens in the production Dockerfile), so do it here.
+  "postCreateCommand": "pip3 install --no-cache-dir --break-system-packages -r requirements.txt",
+  "postStartCommand": "nohup ollama serve > /tmp/ollama.log 2>&1 & sleep 3 && ollama pull ${OLLAMA_MODEL} || true",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "charliermarsh.ruff"]
+    }
+  }
+}
